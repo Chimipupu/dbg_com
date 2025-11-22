@@ -34,7 +34,7 @@ static void backspace_at_cursor(void);
 static void clear_command_line(void);
 static int32_t split_str(char* p_str, dbg_cmd_args_t *p_args);
 
-static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size);
+static void show_mem_dump(uintptr_t dump_addr, uint32_t dump_size);
 static void cmd_help(dbg_cmd_args_t *p_args);
 static void cmd_mem_dump(dbg_cmd_args_t *p_args);
 
@@ -92,15 +92,16 @@ static void cmd_help(dbg_cmd_args_t *p_args)
     printf(">");
 }
 
+// #2000000000000000
 /**
  * @brief メモリダンプ(16進HEX & Ascii)
  * 
- * @param dump_addr ダンプするメモリの32bitアドレス
+ * @param dump_addr ダンプするメモリのアドレス
  * @param dump_size ダンプするサイズ(Byte)
  */
-static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
+static void show_mem_dump(uintptr_t dump_addr, uint32_t dump_size)
 {
-    printf("\n[Memory Dump '(addr:0x%04X)]\n", dump_addr);
+    printf("\n[Memory Dump '(addr:%p)]\n", (void *)dump_addr);
 
     // ヘッダー行を表示
     printf("Address  ");
@@ -119,7 +120,7 @@ static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
     // 16バイトずつダンプ
     for (uint32_t offset = 0; offset < dump_size; offset += 16)
     {
-        printf("%08X: ", dump_addr + offset);
+        printf("%p: ", (void *)(dump_addr + offset));
 
         // 16バイト分のデータを表示
         for (int i = 0; i < 16; i++)
@@ -155,7 +156,7 @@ static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
  */
 static void cmd_mem_dump(dbg_cmd_args_t *p_args)
 {
-    uint32_t addr;
+    uintptr_t addr;
     uint32_t length;
 
     if (p_args->argc != 3) {
@@ -163,13 +164,13 @@ static void cmd_mem_dump(dbg_cmd_args_t *p_args)
         return;
     }
 
-    if (sscanf(p_args->p_argv[1], "#%x", &addr) != 1) {
-        printf("Error: Invalid address format. Use hexadecimal with # prefix (e.g., #F0000000)\n");
+    if (sscanf(p_args->p_argv[1], "#%" PRIxPTR, &addr) != 1) {
+        printf("Error: Invalid address format.\n");
         return;
     }
 
     if (sscanf(p_args->p_argv[2], "#%x", &length) != 1) {
-        printf("Error: Invalid length format. Use hexadecimal with # prefix (e.g., #10)\n");
+        printf("Error: Invalid length format.\n");
         return;
     }
 
