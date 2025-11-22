@@ -24,7 +24,7 @@ static int32_t s_cmd_index = 0;
 dbg_com_config_t *p_s_config = NULL;
 static bool s_is_init_fail = false;
 
-static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t *p_cmd);
+static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t **pp_cmd);
 static void dbg_com_execute_cmd(dbg_cmd_info_t *p_cmd, dbg_cmd_args_t *p_args);
 static void move_cursor_left(void);
 static void move_cursor_right(void);
@@ -68,22 +68,28 @@ static void cmd_help(dbg_cmd_args_t *p_args)
     printf("Copyright (c) 2025 Chimipupu All Rights Reserved.\n"
             ANSI_ESC_PG_RESET);
     printf("-----------------------------------------------------------\n");
-    printf("command: built-in = %d\n", s_total_builtin_in_cmd);
+    printf("Built-in Command: %d\n", s_total_builtin_in_cmd);
     for(i = 0; i < s_total_builtin_in_cmd; i++)
     {
-        printf("  %-10s - %s\n", g_builtin_cmd_tbl[i].p_cmd_str,
+        printf("  %-6s or %-3s - %s\n",
+                                g_builtin_cmd_tbl[i].p_cmd_str,
+                                g_builtin_cmd_tbl[i].p_short_cmd_str,
                                 g_builtin_cmd_tbl[i].p_description
                                 );
     }
     printf("-----------------------------------------------------------\n");
-    printf("command: User = %d\n", p_s_config->total_cmd);
+    printf("User Command: %d\n", p_s_config->total_cmd);
     for(i = 0; i < p_s_config->total_cmd; i++)
     {
-        printf("  %-10s - %s\n", p_s_config->p_cmd_tbl[i].p_cmd_str,
+        printf("  %-6s or %-3s - %s\n",
+                                p_s_config->p_cmd_tbl[i].p_cmd_str,
+                                p_s_config->p_cmd_tbl[i].p_short_cmd_str,
                                 p_s_config->p_cmd_tbl[i].p_description
                                 );
     }
     printf("***********************************************************\n");
+
+    printf(">");
 }
 
 /**
@@ -119,7 +125,7 @@ static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
         for (int i = 0; i < 16; i++)
         {
             if (offset + i < dump_size) {
-                uint8_t data = *((volatile uint8_t*)(dump_addr + offset + i));
+                uint8_t data = *((volatile uint8_t*)(uintptr_t)(dump_addr + offset + i));
                 printf("%02X ", data);
             } else {
                 printf("   ");
@@ -131,7 +137,7 @@ static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
         for (int i = 0; i < 16; i++)
         {
             if (offset + i < dump_size) {
-                uint8_t data = *((volatile uint8_t*)(dump_addr + offset + i));
+                uint8_t data = *((volatile uint8_t*)(uintptr_t)(dump_addr + offset + i));
                 // 表示可能なASCII文字のみ表示
                 printf("%c", (data >= 32 && data <= 126) ? data : '.');
             } else {
@@ -372,13 +378,13 @@ static void add_to_cmd_history(const char* p_cmd)
  * @return true コマンド一致
  * @return false 該当コマンドなし
  */
-static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t *p_cmd)
+static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t **pp_cmd)
 {
     bool ret = false;
     size_t cmd_nums[2] = {s_total_builtin_in_cmd, p_s_config->total_cmd};
-    dbg_cmd_info_t *p_tbl[2] = {
-                                (dbg_cmd_info_t *)&g_builtin_cmd_tbl[0],
-                                (dbg_cmd_info_t *)&p_s_config->p_cmd_tbl[0]
+    const dbg_cmd_info_t *p_tbl[2] = {
+                                (const dbg_cmd_info_t *)&g_builtin_cmd_tbl[0],
+                                (const dbg_cmd_info_t *)&p_s_config->p_cmd_tbl[0]
                                 };
     uint8_t h, i;
 
@@ -386,12 +392,12 @@ static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t *p_cmd)
     {
         for(i = 0; i < cmd_nums[h]; i++)
         {
-            if((strcmp(p_cmd_str, p_tbl[h]->p_short_cmd_str) == 0) ||
-                (strcmp(p_cmd_str, p_tbl[h]->p_cmd_str) == 0)) {
-                p_cmd = p_tbl[h];
+            if((strcmp(p_cmd_str, p_tbl[h][i].p_short_cmd_str) == 0) ||
+                (strcmp(p_cmd_str, p_tbl[h][i].p_cmd_str) == 0)) {
+                *pp_cmd = (dbg_cmd_info_t *)&p_tbl[h][i];
                 ret = true;
+                return ret;
             }
-            p_tbl[h]++;
         }
     }
 
@@ -462,7 +468,7 @@ void dbg_com_main(void)
 
                 split_str(s_cmd_buffer, &args);
                 if (args.argc > 0) {
-                    is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], p_cmd);
+                    is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &p_cmd);
                     if(is_cmd_match) {
                         dbg_com_execute_cmd(p_cmd, &args);
                     } else {
