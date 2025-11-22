@@ -285,6 +285,7 @@ typedef struct {
 
 // コマンド構造体
 typedef struct {
+    const char *p_short_cmd_str;             // 短縮コマンド文字列
     const char *p_cmd_str;                   // コマンド文字列
     void (*p_func)(dbg_cmd_args_t *p_args);  // コールバック関数ポインタ
     int32_t min_args;                        // 最小引数数
@@ -294,8 +295,8 @@ typedef struct {
 
 // dbg_comコンフィグ構造体
 typedef struct {
-    dbg_cmd_info_t *p_cmd_tbl; // コマンドテーブル構造体ポインタ
-    size_t total_cmd;          // コマンド数
+    const dbg_cmd_info_t *p_cmd_tbl; // コマンドテーブル構造体ポインタ
+    size_t total_cmd;                // コマンド数
 } dbg_com_config_t;
 
 bool dbg_com_init(dbg_com_config_t *p_config);

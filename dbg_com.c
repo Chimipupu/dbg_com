@@ -24,8 +24,8 @@ static int32_t s_cmd_index = 0;
 dbg_com_config_t *p_s_config = NULL;
 static bool s_is_init_fail = false;
 
-static bool dbg_com_parse_cmd(const char *p_cmd_str, uint8_t *p_idx);
-static void dbg_com_execute_cmd(dbg_cmd_args_t *p_args);
+static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t *p_cmd);
+static void dbg_com_execute_cmd(dbg_cmd_info_t *p_cmd, dbg_cmd_args_t *p_args);
 static void move_cursor_left(void);
 static void move_cursor_right(void);
 static void insert_char_at_cursor(char c);
@@ -34,7 +34,20 @@ static void backspace_at_cursor(void);
 static void clear_command_line(void);
 static int32_t split_str(char* p_str, dbg_cmd_args_t *p_args);
 
-static void help_cmd(void);
+static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size);
+static void cmd_help(dbg_cmd_args_t *p_args);
+static void cmd_mem_dump(dbg_cmd_args_t *p_args);
+
+// ビルトインコマンドテーブル
+const dbg_cmd_info_t g_builtin_cmd_tbl[] = {
+//  | 短縮/フルコマンド文字列 | コールバック関数 | 最小引数 | 最大引数 | コマンドの説明分 |
+    {"?",  "help",   &cmd_help,        0,       0,        "Command All Show"},
+    {"md", "memd",   &cmd_mem_dump,    2,       2,        "Memory Dump. exp(memd #4byteHexAddr #length)"},
+};
+
+// ビルトインコマンド数
+static size_t s_total_builtin_in_cmd = sizeof(g_builtin_cmd_tbl) / sizeof(g_builtin_cmd_tbl[0]);
+
 // --------------------------------------------------------------------------
 // [Static関数]
 
@@ -42,7 +55,7 @@ static void help_cmd(void);
  * @brief ヘルプコマンド
  * 
  */
-static void help_cmd(void)
+static void cmd_help(dbg_cmd_args_t *p_args)
 {
     uint8_t i;
 
@@ -52,12 +65,18 @@ static void help_cmd(void)
                                     DBGCOM_VER_MINOR,
                                     DBGCOM_VER_REVISION
                                     );
-
     printf("Copyright (c) 2025 Chimipupu All Rights Reserved.\n"
             ANSI_ESC_PG_RESET);
-
-    printf("\nAvailable %d commands:\n", p_s_config->total_cmd);
-
+    printf("-----------------------------------------------------------\n");
+    printf("command: built-in = %d\n", s_total_builtin_in_cmd);
+    for(i = 0; i < s_total_builtin_in_cmd; i++)
+    {
+        printf("  %-10s - %s\n", g_builtin_cmd_tbl[i].p_cmd_str,
+                                g_builtin_cmd_tbl[i].p_description
+                                );
+    }
+    printf("-----------------------------------------------------------\n");
+    printf("command: User = %d\n", p_s_config->total_cmd);
     for(i = 0; i < p_s_config->total_cmd; i++)
     {
         printf("  %-10s - %s\n", p_s_config->p_cmd_tbl[i].p_cmd_str,
@@ -65,6 +84,90 @@ static void help_cmd(void)
                                 );
     }
     printf("***********************************************************\n");
+}
+
+/**
+ * @brief メモリダンプ(16進HEX & Ascii)
+ * 
+ * @param dump_addr ダンプするメモリの32bitアドレス
+ * @param dump_size ダンプするサイズ(Byte)
+ */
+static void show_mem_dump(uint32_t dump_addr, uint32_t dump_size)
+{
+    printf("\n[Memory Dump '(addr:0x%04X)]\n", dump_addr);
+
+    // ヘッダー行を表示
+    printf("Address  ");
+    for (int i = 0; i < 16; i++)
+    {
+        printf("%02X ", i);
+    }
+    printf("| ASCII\n");
+    printf("-------- ");
+    for (int i = 0; i < 16; i++)
+    {
+        printf("---");
+    }
+    printf("| ------\n");
+
+    // 16バイトずつダンプ
+    for (uint32_t offset = 0; offset < dump_size; offset += 16)
+    {
+        printf("%08X: ", dump_addr + offset);
+
+        // 16バイト分のデータを表示
+        for (int i = 0; i < 16; i++)
+        {
+            if (offset + i < dump_size) {
+                uint8_t data = *((volatile uint8_t*)(dump_addr + offset + i));
+                printf("%02X ", data);
+            } else {
+                printf("   ");
+            }
+        }
+
+        // ASCII表示
+        printf("| ");
+        for (int i = 0; i < 16; i++)
+        {
+            if (offset + i < dump_size) {
+                uint8_t data = *((volatile uint8_t*)(dump_addr + offset + i));
+                // 表示可能なASCII文字のみ表示
+                printf("%c", (data >= 32 && data <= 126) ? data : '.');
+            } else {
+                printf(" ");  // データがない場合は空白を表示
+            }
+        }
+        printf("\n");
+    }
+}
+
+/**
+ * @brief メモリダンプコマンド関数
+ * 
+ * @param p_args コマンド引数の構造体ポインタ
+ */
+static void cmd_mem_dump(dbg_cmd_args_t *p_args)
+{
+    uint32_t addr;
+    uint32_t length;
+
+    if (p_args->argc != 3) {
+        printf("Error: Invalid number of arguments. Usage: mem_dump <address> <length>\n");
+        return;
+    }
+
+    if (sscanf(p_args->p_argv[1], "#%x", &addr) != 1) {
+        printf("Error: Invalid address format. Use hexadecimal with # prefix (e.g., #F0000000)\n");
+        return;
+    }
+
+    if (sscanf(p_args->p_argv[2], "#%x", &length) != 1) {
+        printf("Error: Invalid length format. Use hexadecimal with # prefix (e.g., #10)\n");
+        return;
+    }
+
+    show_mem_dump(addr, length);
 }
 
 /**
@@ -265,20 +368,30 @@ static void add_to_cmd_history(const char* p_cmd)
  * @brief 入力コマンドの解析
  * 
  * @param p_cmd_str コマンド文字列ポインタ
- * @param p_idx 該当コマンドのテーブルidx
+ * @param p_cmd 該当コマンドテーブルポインタ
  * @return true コマンド一致
  * @return false 該当コマンドなし
  */
-static bool dbg_com_parse_cmd(const char *p_cmd_str, uint8_t *p_idx)
+static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t *p_cmd)
 {
     bool ret = false;
-    uint8_t i;
+    size_t cmd_nums[2] = {s_total_builtin_in_cmd, p_s_config->total_cmd};
+    dbg_cmd_info_t *p_tbl[2] = {
+                                (dbg_cmd_info_t *)&g_builtin_cmd_tbl[0],
+                                (dbg_cmd_info_t *)&p_s_config->p_cmd_tbl[0]
+                                };
+    uint8_t h, i;
 
-    for(i = 0; i < p_s_config->total_cmd; i++)
+    for(h = 0; h < 2; h++)
     {
-        if (strcmp(p_cmd_str, p_s_config->p_cmd_tbl[i].p_cmd_str) == 0) {
-            *p_idx = i;
-            ret = true;
+        for(i = 0; i < cmd_nums[h]; i++)
+        {
+            if((strcmp(p_cmd_str, p_tbl[h]->p_short_cmd_str) == 0) ||
+                (strcmp(p_cmd_str, p_tbl[h]->p_cmd_str) == 0)) {
+                p_cmd = p_tbl[h];
+                ret = true;
+            }
+            p_tbl[h]++;
         }
     }
 
@@ -288,16 +401,12 @@ static bool dbg_com_parse_cmd(const char *p_cmd_str, uint8_t *p_idx)
 /**
  * @brief コマンド実行
  * 
- * @param p_args 引数構造体ポインタ
+ * @param p_cmd コマンドのテーブルポインタ
+ * @param p_args コマンド引数ポインタ
  */
-static void dbg_com_execute_cmd(dbg_cmd_args_t *p_args)
+static void dbg_com_execute_cmd(dbg_cmd_info_t *p_cmd, dbg_cmd_args_t *p_args)
 {
-    uint8_t i;
-
-    for(i = 0; i < p_s_config->total_cmd; i++)
-    {
-        p_s_config->p_cmd_tbl[i].p_func(p_args);
-    }
+    p_cmd->p_func(p_args);
 }
 
 // --------------------------------------------------------------------------
@@ -317,7 +426,7 @@ bool dbg_com_init(dbg_com_config_t *p_config)
         p_s_config = p_config;
         s_cmd_index = 0;
         s_cursor_pos = 0;
-        help_cmd();
+        cmd_help(NULL);
     } else {
         s_is_init_fail = true;
     }
@@ -331,9 +440,10 @@ void dbg_com_main(void)
     bool is_cmd_match = false;
     dbg_cmd_args_t args;
     uint8_t idx;
+    dbg_cmd_info_t *p_cmd = NULL;
     int32_t c;
 
-    if(s_is_init_fail != false) {
+    if(s_is_init_fail != true) {
         if (s_cmd_index >= DBG_CMD_MAX_LEN - 1) {
             s_cmd_index = 0;
             s_cursor_pos = 0;
@@ -352,9 +462,11 @@ void dbg_com_main(void)
 
                 split_str(s_cmd_buffer, &args);
                 if (args.argc > 0) {
-                    is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &idx);
+                    is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], p_cmd);
                     if(is_cmd_match) {
-                        dbg_com_execute_cmd(&args);
+                        dbg_com_execute_cmd(p_cmd, &args);
+                    } else {
+                        return;
                     }
                 }
                 s_cmd_index = 0;
