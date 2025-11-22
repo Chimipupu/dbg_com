@@ -22,8 +22,9 @@ static char s_cmd_buffer[DBG_CMD_MAX_LEN] = {0};
 // 内部処理用
 static int32_t s_cmd_index = 0;
 dbg_com_config_t *p_s_config = NULL;
+static bool s_is_init_fail = false;
 
-static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_args_t *p_args);
+static bool dbg_com_parse_cmd(const char *p_cmd_str, uint8_t *p_idx);
 static void dbg_com_execute_cmd(dbg_cmd_args_t *p_args);
 static void move_cursor_left(void);
 static void move_cursor_right(void);
@@ -32,8 +33,39 @@ static void delete_char_at_cursor(void);
 static void backspace_at_cursor(void);
 static void clear_command_line(void);
 static int32_t split_str(char* p_str, dbg_cmd_args_t *p_args);
+
+static void help_cmd(void);
 // --------------------------------------------------------------------------
 // [Static関数]
+
+/**
+ * @brief ヘルプコマンド
+ * 
+ */
+static void help_cmd(void)
+{
+    uint8_t i;
+
+    printf("***********************************************************\n");
+    printf("dbg_com Ver%d.%d.%d\n",
+                                    DBGCOM_VER_MAJOR,
+                                    DBGCOM_VER_MINOR,
+                                    DBGCOM_VER_REVISION
+                                    );
+
+    printf("Copyright (c) 2025 Chimipupu All Rights Reserved.\n"
+            ANSI_ESC_PG_RESET);
+
+    printf("\nAvailable %d commands:\n", p_s_config->total_cmd);
+
+    for(i = 0; i < p_s_config->total_cmd; i++)
+    {
+        printf("  %-10s - %s\n", p_s_config->p_cmd_tbl[i].p_cmd_str,
+                                p_s_config->p_cmd_tbl[i].p_description
+                                );
+    }
+    printf("***********************************************************\n");
+}
 
 /**
  * @brief カーソルを左に移動
@@ -233,11 +265,11 @@ static void add_to_cmd_history(const char* p_cmd)
  * @brief 入力コマンドの解析
  * 
  * @param p_cmd_str コマンド文字列ポインタ
- * @param p_args 引数構造体ポインタ
+ * @param p_idx 該当コマンドのテーブルidx
  * @return true コマンド一致
  * @return false 該当コマンドなし
  */
-static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_args_t *p_args)
+static bool dbg_com_parse_cmd(const char *p_cmd_str, uint8_t *p_idx)
 {
     bool ret = false;
     uint8_t i;
@@ -245,6 +277,7 @@ static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_args_t *p_args)
     for(i = 0; i < p_s_config->total_cmd; i++)
     {
         if (strcmp(p_cmd_str, p_s_config->p_cmd_tbl[i].p_cmd_str) == 0) {
+            *p_idx = i;
             ret = true;
         }
     }
@@ -280,9 +313,13 @@ static void dbg_com_execute_cmd(dbg_cmd_args_t *p_args)
 bool dbg_com_init(dbg_com_config_t *p_config)
 {
     if(p_config != NULL) {
+        s_is_init_fail = false;
         p_s_config = p_config;
         s_cmd_index = 0;
         s_cursor_pos = 0;
+        help_cmd();
+    } else {
+        s_is_init_fail = true;
     }
 }
 
@@ -293,83 +330,86 @@ void dbg_com_main(void)
 {
     bool is_cmd_match = false;
     dbg_cmd_args_t args;
+    uint8_t idx;
     int32_t c;
 
-    if (s_cmd_index >= DBG_CMD_MAX_LEN - 1) {
-        s_cmd_index = 0;
-        s_cursor_pos = 0;
-    }
-
-    c = getchar();
-
-    // デリミタでCRかLFが来たらコマンドの受付を終わる
-    if (c == '\r' || c == '\n') {
-        if (s_cmd_index > 0) {
-            s_cmd_buffer[s_cmd_index] = '\0';
-            printf("\n");
-
-            // コマンド履歴に入力されたコマンドを追加
-            add_to_cmd_history(s_cmd_buffer);
-
-            split_str(s_cmd_buffer, &args);
-            if (args.argc > 0) {
-                is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &args);
-                if(is_cmd_match) {
-                    dbg_com_execute_cmd(&args);
-                }
-            }
+    if(s_is_init_fail != false) {
+        if (s_cmd_index >= DBG_CMD_MAX_LEN - 1) {
             s_cmd_index = 0;
             s_cursor_pos = 0;
-            printf("> ");
-        } else {
-            printf("\n> ");
         }
-    } else if (c == '\b' || c == KEY_BACKSPACE) {
-        // Backspace処理
-        backspace_at_cursor();
-    } else if (c == KEY_DELETE) {
-        // Delete処理
-        delete_char_at_cursor();
-    } else if (c == KEY_ESC) { // ESC
+
         c = getchar();
-        if (c == KEY_ANSI_ESC) { // ANSI escape sequence
-            c = getchar();
-            if (c == KEY_UP) { // キーボードの上矢印
-                if (s_history_pos < s_history_count - 1) {
-                    // 現在の入力バッファをクリア
-                    clear_command_line();
 
-                    // コマンド履歴を1つ古いものに
-                    s_history_pos++;
-                    strcpy(s_cmd_buffer, s_cmd_history[s_history_pos]);
-                    s_cmd_index = strlen(s_cmd_buffer);
-                    s_cursor_pos = s_cmd_index; // カーソルを末尾に
-                    printf("%s", s_cmd_buffer);
+        // デリミタでCRかLFが来たらコマンドの受付を終わる
+        if (c == '\r' || c == '\n') {
+            if (s_cmd_index > 0) {
+                s_cmd_buffer[s_cmd_index] = '\0';
+                printf("\n");
+
+                // コマンド履歴に入力されたコマンドを追加
+                add_to_cmd_history(s_cmd_buffer);
+
+                split_str(s_cmd_buffer, &args);
+                if (args.argc > 0) {
+                    is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &idx);
+                    if(is_cmd_match) {
+                        dbg_com_execute_cmd(&args);
+                    }
                 }
-            } else if (c == KEY_DOWN) { // キーボードの下矢印
-                if (s_history_pos >= 0) {
-                    // コマンド履歴の現在の入力バッファをクリア
-                    clear_command_line();
+                s_cmd_index = 0;
+                s_cursor_pos = 0;
+                printf("> ");
+            } else {
+                printf("\n> ");
+            }
+        } else if (c == '\b' || c == KEY_BACKSPACE) {
+            // Backspace処理
+            backspace_at_cursor();
+        } else if (c == KEY_DELETE) {
+            // Delete処理
+            delete_char_at_cursor();
+        } else if (c == KEY_ESC) { // ESC
+            c = getchar();
+            if (c == KEY_ANSI_ESC) { // ANSI escape sequence
+                c = getchar();
+                if (c == KEY_UP) { // キーボードの上矢印
+                    if (s_history_pos < s_history_count - 1) {
+                        // 現在の入力バッファをクリア
+                        clear_command_line();
 
-                    // 履歴を1つ新しいものに
-                    s_history_pos--;
-                    if (s_history_pos < 0) {
-                        s_cmd_index = 0;
-                        s_cursor_pos = 0;
-                    } else {
+                        // コマンド履歴を1つ古いものに
+                        s_history_pos++;
                         strcpy(s_cmd_buffer, s_cmd_history[s_history_pos]);
                         s_cmd_index = strlen(s_cmd_buffer);
                         s_cursor_pos = s_cmd_index; // カーソルを末尾に
                         printf("%s", s_cmd_buffer);
                     }
+                } else if (c == KEY_DOWN) { // キーボードの下矢印
+                    if (s_history_pos >= 0) {
+                        // コマンド履歴の現在の入力バッファをクリア
+                        clear_command_line();
+
+                        // 履歴を1つ新しいものに
+                        s_history_pos--;
+                        if (s_history_pos < 0) {
+                            s_cmd_index = 0;
+                            s_cursor_pos = 0;
+                        } else {
+                            strcpy(s_cmd_buffer, s_cmd_history[s_history_pos]);
+                            s_cmd_index = strlen(s_cmd_buffer);
+                            s_cursor_pos = s_cmd_index; // カーソルを末尾に
+                            printf("%s", s_cmd_buffer);
+                        }
+                    }
+                } else if (c == KEY_LEFT) { // 左矢印キー
+                    move_cursor_left();
+                } else if (c == KEY_RIGHT) { // 右矢印キー
+                    move_cursor_right();
                 }
-            } else if (c == KEY_LEFT) { // 左矢印キー
-                move_cursor_left();
-            } else if (c == KEY_RIGHT) { // 右矢印キー
-                move_cursor_right();
             }
+        } else if (c >= ' ' && c <= '~') {
+            insert_char_at_cursor(c);
         }
-    } else if (c >= ' ' && c <= '~') {
-        insert_char_at_cursor(c);
     }
 }
