@@ -468,14 +468,13 @@ void dbg_com_main(void)
                 s_cmd_buffer[s_cmd_index] = '\0';
                 printf("\n");
                 split_str(s_cmd_buffer, &args);
+                // コマンド履歴に入力されたコマンドを追加
+                add_to_cmd_history(s_cmd_buffer);
                 if (args.argc > 0) {
                     is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &p_cmd);
                     if(is_cmd_match) {
                         // コマンド実行
                         dbg_com_execute_cmd(p_cmd, &args);
-
-                        // コマンド履歴に入力されたコマンドを追加
-                        add_to_cmd_history(s_cmd_buffer);
                     } else {
                         goto PROC_ESC;
                     }
