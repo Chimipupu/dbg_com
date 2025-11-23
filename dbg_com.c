@@ -382,6 +382,7 @@ static void add_to_cmd_history(const char* p_cmd)
 static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t **pp_cmd)
 {
     bool ret = false;
+    bool is_match = false;
     size_t cmd_nums[2] = {s_total_builtin_in_cmd, p_s_config->total_cmd};
     const dbg_cmd_info_t *p_tbl[2] = {
                                 (const dbg_cmd_info_t *)&g_builtin_cmd_tbl[0],
@@ -397,9 +398,12 @@ static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t **pp_cmd)
                 (strcmp(p_cmd_str, p_tbl[h][i].p_cmd_str) == 0)) {
                 *pp_cmd = (dbg_cmd_info_t *)&p_tbl[h][i];
                 ret = true;
-                return ret;
             }
         }
+    }
+
+    if(ret != true) {
+        printf("%s???\n", p_cmd_str);
     }
 
     return ret;
@@ -463,23 +467,24 @@ void dbg_com_main(void)
             if (s_cmd_index > 0) {
                 s_cmd_buffer[s_cmd_index] = '\0';
                 printf("\n");
-
-                // コマンド履歴に入力されたコマンドを追加
-                add_to_cmd_history(s_cmd_buffer);
-
                 split_str(s_cmd_buffer, &args);
                 if (args.argc > 0) {
                     is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &p_cmd);
                     if(is_cmd_match) {
+                        // コマンド実行
                         dbg_com_execute_cmd(p_cmd, &args);
+
+                        // コマンド履歴に入力されたコマンドを追加
+                        add_to_cmd_history(s_cmd_buffer);
                     } else {
-                        return;
+                        goto PROC_ESC;
                     }
                 }
                 s_cmd_index = 0;
                 s_cursor_pos = 0;
                 printf("> ");
             } else {
+            PROC_ESC:
                 printf("\n> ");
             }
         } else if (c == '\b' || c == KEY_BACKSPACE) {
