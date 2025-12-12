@@ -403,6 +403,7 @@ static bool dbg_com_parse_cmd(const char *p_cmd_str, dbg_cmd_info_t **pp_cmd)
     }
 
     if(ret != true) {
+        memset(s_cmd_buffer, 0, sizeof(s_cmd_buffer));
         printf("%s???\n", p_cmd_str);
     }
 
@@ -432,6 +433,9 @@ static void dbg_com_execute_cmd(dbg_cmd_info_t *p_cmd, dbg_cmd_args_t *p_args)
  */
 bool dbg_com_init(dbg_com_config_t *p_config)
 {
+    memset(s_cmd_buffer, 0, sizeof(s_cmd_buffer));
+    memset(s_cmd_history, 0, sizeof(s_cmd_history));
+
     if(p_config != NULL) {
         s_is_init_fail = false;
         p_s_config = p_config;
