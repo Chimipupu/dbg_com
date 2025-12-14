@@ -1,9 +1,9 @@
 /**
  * @file dbg_com.c
  * @author Chimipupu(https://github.com/Chimipupu)
- * @brief dbg_com
+ * @brief デバッグモニタ(dbg_com)
  * @version 0.1
- * @date 2025-11-23
+ * @date 2025-12-14
  * 
  * @copyright Copyright (c) 2025 Chimipupu All Rights Reserved.
  * 
@@ -14,7 +14,7 @@
 static char s_cmd_history[CMD_HISTORY_MAX][DBG_CMD_MAX_LEN];
 static uint8_t s_history_count = 0;  // コマンド履歴の数
 static int8_t s_history_pos = -1;    // 現在の履歴位置（-1は最新）
-static int32_t s_cursor_pos = 0;  // カーソル位置（0からs_cmd_indexの範囲）
+static int32_t s_cursor_pos = 0;     // カーソル位置（0からs_cmd_indexの範囲）
 
 // コマンドバッファ
 static char s_cmd_buffer[DBG_CMD_MAX_LEN] = {0};
@@ -33,16 +33,18 @@ static void delete_char_at_cursor(void);
 static void backspace_at_cursor(void);
 static void clear_command_line(void);
 static int32_t split_str(char* p_str, dbg_cmd_args_t *p_args);
-
 static void show_mem_dump(uintptr_t dump_addr, uint32_t dump_size);
+
 static void cmd_help(dbg_cmd_args_t *p_args);
+static void cmd_cls(dbg_cmd_args_t *p_args);
 static void cmd_mem_dump(dbg_cmd_args_t *p_args);
 
 // ビルトインコマンドテーブル
 const dbg_cmd_info_t g_builtin_cmd_tbl[] = {
 //  | 短縮/フルコマンド文字列 | コールバック関数 | 最小引数 | 最大引数 | コマンドの説明分 |
-    {"?",  "help",   &cmd_help,        0,       0,        "Command All Show"},
-    {"md", "memd",   &cmd_mem_dump,    2,       2,        "Memory Dump. exp(memd #4byteHexAddr #length)"},
+    {"?",   "help",   &cmd_help,        0,       0,        "Command All Show"},
+    {"cls", "clear",  &cmd_cls,         0,       0,        "Clear Screen"},
+    {"md",  "memd",   &cmd_mem_dump,    2,       2,        "Memory Dump. exp(memd #4byteHexAddr #length)"},
 };
 
 // ビルトインコマンド数
@@ -92,7 +94,16 @@ static void cmd_help(dbg_cmd_args_t *p_args)
     printf(">");
 }
 
-// #2000000000000000
+/**
+ * @brief 画面クリアコマンド
+ * 
+ * @param p_args (未使用)
+ */
+static void cmd_cls(dbg_cmd_args_t *p_args)
+{
+    printf(ANSI_ESC_CLEAR_ALL);
+}
+
 /**
  * @brief メモリダンプ(16進HEX & Ascii)
  * 
@@ -459,11 +470,7 @@ void dbg_com_main(void)
     int32_t c;
 
     if(s_is_init_fail != true) {
-        if (s_cmd_index >= DBG_CMD_MAX_LEN - 1) {
-            s_cmd_index = 0;
-            s_cursor_pos = 0;
-        }
-
+        // 1文字取得
         c = getchar();
 
         // デリミタでCRかLFが来たらコマンドの受付を終わる
@@ -471,9 +478,13 @@ void dbg_com_main(void)
             if (s_cmd_index > 0) {
                 s_cmd_buffer[s_cmd_index] = '\0';
                 printf("\n");
-                split_str(s_cmd_buffer, &args);
-                // コマンド履歴に入力されたコマンドを追加
+
+                // コマンド履歴に追加
                 add_to_cmd_history(s_cmd_buffer);
+
+                // 引数を分割
+                split_str(s_cmd_buffer, &args);
+
                 if (args.argc > 0) {
                     is_cmd_match = dbg_com_parse_cmd(args.p_argv[0], &p_cmd);
                     if(is_cmd_match) {

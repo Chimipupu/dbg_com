@@ -1,9 +1,9 @@
 /**
  * @file dbg_com.h
  * @author Chimipupu(https://github.com/Chimipupu)
- * @brief dbg_com ヘッダ
+ * @brief デバッグモニタ(dbg_com)
  * @version 0.1
- * @date 2025-11-23
+ * @date 2025-12-14
  * 
  * @copyright Copyright (c) 2025 Chimipupu All Rights Reserved.
  * 
@@ -19,14 +19,14 @@
 #include <stdbool.h>
 
 // --------------------------------------------------------------------------
-// [バージョン情報]
-#define DBGCOM_VER_MAJOR        0
-#define DBGCOM_VER_MINOR        1
-#define DBGCOM_VER_REVISION     0
-
-// --------------------------------------------------------------------------
 // [コンパイルスイッチ]
 // #define DEBUG_DBG_COM      // デバッグ用
+
+// --------------------------------------------------------------------------
+// [バージョン情報]
+#define DBGCOM_VER_MAJOR               0
+#define DBGCOM_VER_MINOR               1
+#define DBGCOM_VER_REVISION            0
 
 // --------------------------------------------------------------------------
 // [コマンド関連のマクロ]
